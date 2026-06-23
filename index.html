@@ -1056,6 +1056,7 @@ async function runRecon() {
     const fnOro    = findCol(oroH,"Users - Customer Auth → First Name");
     const lnOro    = findCol(oroH,"Users - Customer Auth → Last Name");
     const renewOro = findCol(oroH,"Loans - Renew From Loan → Loan Number");
+    const acctNOro = findCol(oroH,"Account Number");
     const partnerOro = findCol(oroH, CFG.partner_col);
 
     if (!lanFed) throw new Error(`Cannot find Loan ID column in Fed Bank file.\nSheets: ${(fed.sheetNames||[]).join(', ')}\nHeaders read: ${fedH.slice(0,15).join(', ')}`);
@@ -1072,9 +1073,10 @@ async function runRecon() {
     for (const row of oroAllRows) {
       const lan = cellStr(row[lanOro]);
       if (lan) oroFullMap[lan] = {
-        start:  row[startOro]??null,
-        renew:  cellStr(row[renewOro]||''),
-        status: cellStr(row[statusOro]||''),
+        start:   row[startOro]??null,
+        renew:   cellStr(row[renewOro]||''),
+        status:  cellStr(row[statusOro]||''),
+        account: cellStr(row[acctNOro]||''),
       };
     }
 
@@ -1128,6 +1130,15 @@ async function runRecon() {
       });
     }
 
+    // Reverse renewal map: old LAN → new LAN
+    const renewReverse={};
+    for (const [newLan, entry] of Object.entries(oroFullMap)) {
+      const oldLan=entry.renew;
+      if (oldLan && !['none','nan',''].includes(oldLan.toLowerCase()))
+        renewReverse[oldLan]=newLan;
+    }
+    log(`  Renewal reverse map: ${Object.keys(renewReverse).length.toLocaleString()} entries`);
+
     await setProg(73, `Comparing — Fed-Bank-only loans…`);
 
     // ── Cat 2: Fed Bank only ──
@@ -1147,13 +1158,25 @@ async function runRecon() {
         else if (renew&&!['none','nan',''].includes(renew.toLowerCase())) loanType='Renewal Loan';
         else loanType='Fresh Loan';
       } else loanType='Not found in Oro';
+
+      const newLoanId = renewReverse[lan] || '';
+
+      // Prefer new loan's Oro account number when a renewal exists.
+      // Account number changes on renewal, so the Fed Bank row carries the old one.
+      let acctNum='';
+      if (newLoanId && oroFullMap[newLoanId]) {
+        acctNum = normalizeAcct(oroFullMap[newLoanId].account);
+      }
+      if (!acctNum) acctNum = acctNFed ? normalizeAcct(row[acctNFed]) : '';
+
       fedOnly.push({
-        "Loan ID (Fed Bank)": lan,
+        "Loan ID (Fed Bank)":  lan,
+        "New Loan ID (Oro)":   newLoanId,
         "Customer (Fed Bank)": nameFed?cellStr(row[nameFed]||''):'',
-        "Customer ID":        custIdFed?cellStr(row[custIdFed]||''):'',
-        "Account Number":     acctNFed?normalizeAcct(row[acctNFed]):'',
-        "Loan Type":          loanType,
-        "Loan Start Date":    loanStart,
+        "Customer ID":         custIdFed?cellStr(row[custIdFed]||''):'',
+        "Account Number":      acctNum,
+        "Loan Type":           loanType,
+        "Loan Start Date":     loanStart,
         "Note": "OMGL ID in Fed Bank — no match in Oro active loans"
       });
     }
@@ -1556,3 +1579,6 @@ function escH(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').r
 </script>
 </body>
 </html>
+apps-fileview.texmex_20260610.09_p0
+index.html
+Displaying index.html.
